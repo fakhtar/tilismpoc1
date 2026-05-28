@@ -1,4 +1,25 @@
-*.jpg
-*.jpeg
+# Godot generated cache - rebuilds automatically on project open
+tilism_poc/.godot/
+
+# Godot import metadata - regenerates from source files
+tilism_poc/**/*.uid
+tilism_poc/**/*.import
+
+# Runtime outputs - generated during simulation
+latest_frame.jpg
 *.jsonl
 frames/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+*.uid
+*.import
+.godot/
+*.tmp

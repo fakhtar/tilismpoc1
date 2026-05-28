@@ -10,7 +10,6 @@ var http_poll: HTTPRequest
 var http_result: HTTPRequest
 var http_frame: HTTPRequest
 var waiting_for_response: bool = false
-var frame_sent: bool = false
 
 @onready var main: Node = get_parent()
 
@@ -38,27 +37,39 @@ func _process(delta: float):
 		_push_frame_then_poll()
 
 func _push_frame_then_poll():
-	# Capture current viewport as JPEG bytes
-	var viewport = get_viewport()
-	var img = viewport.get_texture().get_image()
-	var jpeg_bytes = img.save_jpg_to_buffer(0.8)
+	print("Attempting frame capture...")
+	var vp = get_viewport()
+	var img = vp.get_texture().get_image()
+	print("Image size: ", img.get_width(), "x", img.get_height())
 	
-	if jpeg_bytes.size() == 0:
-		print("Frame capture failed - skipping")
+	img.resize(336, 336)
+	
+	var jpeg_bytes: PackedByteArray = img.save_jpg_to_buffer(0.5)
+	print("JPEG bytes: ", jpeg_bytes.size())
+	
+	if jpeg_bytes.is_empty():
+		print("Frame capture failed - polling anyway")
+		waiting_for_response = true
 		_poll_for_command()
 		return
 	
+	print("Sending frame to Python...")
 	waiting_for_response = true
-	frame_sent = false
 	
-	var headers = [
+	var headers = PackedStringArray([
 		"Content-Type: image/jpeg",
 		"Content-Length: " + str(jpeg_bytes.size())
-	]
-	http_frame.request_raw(FRAME_URL, headers, HTTPClient.METHOD_POST, jpeg_bytes)
+	])
+	
+	var err = http_frame.request_raw(
+		FRAME_URL,
+		headers,
+		HTTPClient.METHOD_POST,
+		jpeg_bytes
+	)
+	print("Frame request started, error code: ", err)
 
 func _on_frame_sent(result, response_code, headers, body):
-	# Frame received by Python - now poll for command
 	if response_code != 200:
 		print("Frame send error: ", response_code)
 	waiting_for_response = false
