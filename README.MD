@@ -139,3 +139,7 @@ Replace the hardcoded tool calls in `mcp_client.py` with a local multimodal
 LLM (LLaVA 7B quantized). The LLM receives `latest_frame.jpg`, reasons about
 what the puppet should do, and returns a `move_forward` tool call. Hardware
 requirement: GTX 1060 6GB is sufficient for a quantized 7B vision model.
+
+ollama ps
+ollama list
+ollama run qwen2.5vl:7b "Hello! Are you working?"

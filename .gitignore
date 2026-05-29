@@ -23,3 +23,6 @@ Thumbs.db
 *.import
 .godot/
 *.tmp
+
+tilism_poc/icon.svg
+tilism_poc/.editorconfig

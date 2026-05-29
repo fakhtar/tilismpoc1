@@ -27,6 +27,7 @@ func _ready():
 	http_frame.request_completed.connect(_on_frame_sent)
 	
 	print("MCP Client polling ", POLL_URL)
+	print("Active camera: ", get_viewport().get_camera_3d().name)
 
 func _process(delta: float):
 	if waiting_for_response:
@@ -98,15 +99,28 @@ func _on_poll_completed(result, response_code, headers, body):
 		return
 	
 	var msg = json.get_data()
-	print("MCP received tool call: ", msg["tool"], " | params: ", msg["params"])
+	print("MCP received tool call: ", msg.get("tool", "unknown"), " | params: ", msg.get("params", {}))
 	
+	if not msg.has("tool"):
+		print("Invalid message - missing tool field: ", msg)
+		return
+
 	var tool_name: String = msg["tool"]
-	var params: Dictionary = msg["params"]
+	var params: Dictionary = {}
+	if msg.has("params"):
+		params = msg["params"]
 	
 	match tool_name:
-		"move_forward":
-			var amount: float = float(params.get("amount", 1.0))
-			var call_result = main.move_puppet_forward(amount)
+		"move":
+			var dx: float = float(params.get("dx", 0.0))
+			var dz: float = float(params.get("dz", 0.0))
+			print("Moving puppet dx: ", dx, " dz: ", dz)
+			var call_result = main.move_puppet(dx, dz)
+			print("Result: ", call_result)
+			_send_result(msg.get("id", 0), call_result)
+		"stop":
+			print("Stopping puppet")
+			var call_result = main.stop_puppet()
 			print("Result: ", call_result)
 			_send_result(msg.get("id", 0), call_result)
 		_:
@@ -119,3 +133,7 @@ func _send_result(id, result: Dictionary):
 
 func _on_result_completed(result, response_code, headers, body):
 	pass
+func stop_polling():
+	waiting_for_response = true
+	poll_timer = 0.0
+	print("Simulation complete — polling stopped")

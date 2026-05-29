@@ -4,14 +4,10 @@ import os
 import base64
 import time
 import re
-import anthropic
+import ollama
 
-MODEL = "claude-opus-4-5"
+MODEL = "llava:7b-v1.6-mistral-q4_K_M"
 FRAME_PATH = "latest_frame.jpg"
-API_KEY = "YOURAPIKEY"
-
-client = anthropic.Anthropic(api_key=API_KEY)
-
 new_frame_received = False
 frame_count = 0
 call_id = 0
@@ -113,8 +109,8 @@ IS_RED_DOT_LEFT_OR_RIGHT_OF_CAPSULE: [answer LEFT or RIGHT — if the red dot is
 IS_RED_DOT_ABOVE_OR_BELOW_CAPSULE: [answer ABOVE or BELOW — if the red dot is higher in the image than the white capsule, answer ABOVE]
 
 Step 3 — Derive movement values from Step 2:
-DX: [if Step 2 says LEFT then -0.5, if RIGHT then +0.5]
-DZ: [if Step 2 says ABOVE then -0.5, if BELOW then +0.5]
+DX: [if Step 2 says LEFT then -2.0, if RIGHT then +2.0]
+DZ: [if Step 2 says ABOVE then -2.0, if BELOW then +2.0]
 
 Step 4 — Output your move (copy DX and DZ values from Step 3 exactly):
 MOVE: {"tool": "move", "params": {"dx": [DX value from Step 3], "dz": [DZ value from Step 3]}}
@@ -122,7 +118,6 @@ MOVE: {"tool": "move", "params": {"dx": [DX value from Step 3], "dz": [DZ value 
 MOVE line is mandatory. DX and DZ must match Step 3 exactly."""
 
     return prompt
-
 
 def extract_json(raw):
     """Extract tool call JSON. Three passes plus DX/DZ reconstruction fallback."""
@@ -203,7 +198,7 @@ def extract_json(raw):
     return None
 
 
-def query_llm():
+def query_llava():
     global previous_frame_b64, last_tool_call, prev_distance, curr_distance
     global distance_history, move_history
 
@@ -211,54 +206,36 @@ def query_llm():
     print(f"DEBUG frame hash: {hash(current_frame_b64)}")
     print(f"DEBUG prev hash: {hash(previous_frame_b64) if previous_frame_b64 else 'None'}")
 
+    images = []
+    if previous_frame_b64 is not None:
+        images.append(previous_frame_b64)
+    images.append(current_frame_b64)
+
     prompt = build_prompt(
         last_tool_call, prev_distance, curr_distance,
         distance_history, move_history
     )
 
-    # Build content blocks
-    content = []
-
-    if previous_frame_b64 is not None:
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/jpeg",
-                "data": previous_frame_b64
-            }
-        })
-
-    content.append({
-        "type": "image",
-        "source": {
-            "type": "base64",
-            "media_type": "image/jpeg",
-            "data": current_frame_b64
-        }
-    })
-
-    content.append({
-        "type": "text",
-        "text": prompt
-    })
-
     try:
         start_time = time.time()
-        print(f"DEBUG sending {1 if previous_frame_b64 is None else 2} image(s) to model")
-
-        response = client.messages.create(
+        print(f"DEBUG sending {len(images)} image(s) to model")
+        response = ollama.chat(
             model=MODEL,
-            max_tokens=300,
             messages=[{
-                "role": "user",
-                "content": content
-            }]
+                'role': 'user',
+                'content': prompt,
+                'images': images
+            }],
+            options={
+                'num_predict': 200,
+                'num_ctx': 2048,
+                'temperature': 0.3
+            }
         )
-
         inference_time = time.time() - start_time
-        raw = response.content[0].text.strip()
-        print(f"Claude reasoning ({inference_time:.1f}s):\n{raw}\n")
+
+        raw = response['message']['content'].strip()
+        print(f"LLaVA reasoning ({inference_time:.1f}s):\n{raw}\n")
 
         tool_call = extract_json(raw)
 
@@ -270,6 +247,7 @@ def query_llm():
             "params": tool_call.get("params", {"dx": 0.0, "dz": -1.0})
         }
 
+        # Never allow no-op
         params = clean_call.get("params", {})
         if params.get("dx", 0) == 0.0 and params.get("dz", 0) == 0.0:
             print("WARNING: no-op move — overriding with dz=-1.0")
@@ -282,7 +260,7 @@ def query_llm():
         return clean_call, inference_time
 
     except Exception as e:
-        print(f"Claude API error: {e} — defaulting to move forward")
+        print(f"LLaVA error: {e} — defaulting to move forward")
         previous_frame_b64 = current_frame_b64
         default = {"tool": "move", "params": {"dx": 0.0, "dz": -1.0}}
         last_tool_call = default
@@ -299,9 +277,9 @@ class MCPHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.flush()
                 return
-            new_frame_received = False
+            new_frame_received = False  # Reset flag before making decision
             print(f"\n--- LLM Decision {call_id + 1} ---")
-            clean_call, inference_time = query_llm()  # renamed from query_llava
+            clean_call, inference_time = query_llava()
             call_id += 1
 
             envelope = {
