@@ -1,0 +1,55 @@
+[gd_scene format=3 uid="uid://7f6ackvsukyr"]
+
+[ext_resource type="Script" uid="uid://b08i1tkbtyv66" path="res://replay.gd" id="1_ilvgk"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_7dm0k"]
+size = Vector2(20, 20)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ig7tw"]
+size = Vector3(20, 1, 20)
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_0xm2m"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_h2yge"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_0xm2m"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
+albedo_color = Color(1, 0, 0, 1)
+
+[node name="Main" type="Node" unique_id=437188098]
+script = ExtResource("1_ilvgk")
+
+[node name="World" type="Node3D" parent="." unique_id=1660274070]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="World" unique_id=1726411924]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -45, 45, 0)
+
+[node name="Ground" type="MeshInstance3D" parent="World" unique_id=2146598567]
+mesh = SubResource("PlaneMesh_7dm0k")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="World/Ground" unique_id=950391017]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Ground/StaticBody3D" unique_id=1451578567]
+shape = SubResource("BoxShape3D_ig7tw")
+
+[node name="Puppet" type="Node3D" parent="World" unique_id=487792672]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Puppet" unique_id=1593804301]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.03659177, -0.015575409)
+shape = SubResource("CapsuleShape3D_0xm2m")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Puppet" unique_id=314223609]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("CapsuleMesh_h2yge")
+
+[node name="Goal" type="MeshInstance3D" parent="World" unique_id=1941113423]
+mesh = SubResource("SphereMesh_0xm2m")
+surface_material_override/0 = SubResource("StandardMaterial3D_h2yge")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=292230569]
+transform = Transform3D(1, 0, 0, 0, 0.9396926, 0.34202012, 0, -0.34202012, 0.9396926, 0, 4, 8)
+current = true
+
+[node name="BirdsEyeCamera" type="Camera3D" parent="." unique_id=2014483168]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 20, 0)

@@ -114,8 +114,9 @@ func _on_poll_completed(result, response_code, headers, body):
 		"move":
 			var dx: float = float(params.get("dx", 0.0))
 			var dz: float = float(params.get("dz", 0.0))
+			var inference_time: float = float(msg.get("inference_time", 0.0))
 			print("Moving puppet dx: ", dx, " dz: ", dz)
-			var call_result = main.move_puppet(dx, dz)
+			var call_result = main.move_puppet(dx, dz, inference_time)
 			print("Result: ", call_result)
 			_send_result(msg.get("id", 0), call_result)
 		"stop":
