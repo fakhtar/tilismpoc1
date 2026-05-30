@@ -1,145 +1,300 @@
-# Tilisme POC — Status & Run Guide
+# Tilisme POC — Inference-Subordinate Simulation
 
-## What This Is
+A proof of concept implementation for Paper One of the Tilisme 
+platform. Demonstrates that a 3D simulation engine can be operated 
+as an inference-subordinate recording system, completely decoupling 
+inference time from playback time.
 
-A proof of concept for an AI-driven film simulation pipeline. An external
-intelligence observes a 3D world through a camera and issues commands that
-move objects in that world. The world records every frame and every decision.
-
-This is the foundation of the Tilisme platform — a system where LLM agents
-drive puppet characters in a simulated world, producing footage that can be
-corrected to photorealistic output in post.
-
----
-
-## Current State
-
-**Phase 0 complete.** The full observation-action loop is proven end to end:
-
-- Godot runs a 3D scene with a ground plane and a capsule puppet
-- A Camera3D captures frames continuously
-- Godot sends the latest camera frame to Python as a JPEG every 0.5 seconds
-- Python receives the frame and saves it to `latest_frame.jpg`
-- Python sends a tool call back to Godot (`move_forward` with an amount)
-- Godot executes the tool call, moves the puppet, logs the action and frame number
-- The loop repeats
-
-The LLM is not connected yet. Python sends hardcoded tool calls. This proves
-the pipeline works before adding inference complexity.
+**Paper:** *Inference-Subordinate Simulation: Decoupling Agent Decision 
+Time from Playback Time in 3D Environments*  
+**Author:** Faisal Akhtar  
+**arXiv:** [link when published]
 
 ---
 
-## Files
+## The Core Claim
 
-```
-tilism_poc/                         ← Godot project folder
-    main.tscn                       ← Scene file
-    main.gd                         ← Handles puppet movement, frame capture, decision log
-    mcp_server.gd                   ← HTTP client that pushes frames and polls for commands
-
-C:\Projects\Tilism\First\
-    mcp_client.py                   ← Python HTTP server — stand-in for the LLM
-    latest_frame.jpg                ← Current camera view, updated every 0.5s (generated at runtime)
-```
+The simulation engine advances **only when the LLM issues a decision**. 
+Recorded decisions replay at any speed without re-running the LLM. 
+Inference time and playback time are fully decoupled.
 
 ---
 
-## Scene Structure
+## Repository Structure
 
 ```
-Main (Node)              ← main.gd attached
-└── World (Node3D)
-    ├── DirectionalLight3D
-    ├── Ground (MeshInstance3D)
-    │   └── StaticBody3D
-    │       └── CollisionShape3D
-    └── Puppet (AnimatableBody3D)   ← the capsule placeholder
-        ├── CollisionShape3D
-        └── MeshInstance3D
-├── Camera3D             ← positioned at (0, 4, 8), rotation (-20, 0, 0)
-└── MCPServer (Node)     ← mcp_server.gd attached
+tilisme-poc/
+│
+├── mcp_client.py              # Python inference server
+│                              # Receives frames, runs LLM inference,
+│                              # returns tool calls to Godot
+│
+└── tilism_poc/                # Godot 4 project
+    ├── main.tscn              # Recording scene (bird's eye camera active)
+    ├── main.gd                # Puppet movement, frame capture,
+    │                          # decision log, CSV data collection
+    ├── mcp_server.gd          # HTTP polling client, passes tool calls
+    │                          # from Python to main.gd
+    ├── replay.tscn            # Replay scene (ground level camera active)
+    ├── replay.gd              # Reads decision log, replays at variable
+    │                          # speed, displays timing comparison UI
+    ├── project.godot          # Godot project configuration
+    ├── decision_log.jsonl     # Generated at runtime — last recording run
+    ├── runs.csv               # Generated at runtime — all run summaries
+    └── decisions.csv          # Generated at runtime — all per-decision data
 ```
 
 ---
 
-## How To Run
+## Prerequisites
 
-**Step 1 — Start Python first**
+**Godot 4**
+- Version 4.6.2 or later
+- Download from https://godotengine.org
+
+**Python**
+- Version 3.9 or later
+- Required package: `anthropic`
+
 ```bash
-cd C:\Projects\Tilism\First
+pip install anthropic
+```
+
+**Anthropic API Key**
+- Obtain from https://console.anthropic.com
+- Set as environment variable:
+
+```bash
+# Windows
+set ANTHROPIC_API_KEY=your-api-key-here
+
+# macOS / Linux
+export ANTHROPIC_API_KEY=your-api-key-here
+```
+
+---
+
+## Running a Recording Session
+
+A recording session runs the LLM-driven agent, logs all decisions, 
+and writes results to CSV.
+
+**Step 1 — Start the inference server**
+
+```bash
+cd path/to/tilisme-poc
 python mcp_client.py
 ```
+
 You should see:
 ```
-MCP HTTP server listening on port 9876
-Frames will be saved to: C:\Projects\Tilism\First\latest_frame.jpg
+MCP LLM server listening on port 9876
+Model: claude-opus-4-5
+Waiting for frames from Godot...
 ```
 
-**Step 2 — Run the Godot scene**
-- Open the `tilism_poc` project in Godot
-- Press **F5**
+**Step 2 — Open the Godot project**
 
-You should see in the Godot Output panel:
+1. Open Godot 4
+2. Import the project from `tilism_poc/`
+3. Open `main.tscn`
+4. Press **F5** or click **Run Project**
+
+The simulation will start. Godot sends frames to the inference 
+server, Claude reasons about each frame, and the capsule navigates 
+toward the red sphere. Each decision is logged automatically.
+
+**Step 3 — Wait for goal reached**
+
+When the capsule reaches the goal you will see in the Godot console:
+
 ```
-MCP Client polling http://127.0.0.1:9876/poll
-Frame output: ...
-Log output: ...
+GOAL REACHED at frame N
+--- RUN SUMMARY ---
+Run ID:              1
+Decisions:           8
+Good moves:          7 (88%)
+Total inference:     36.42s
+Mean inference:      4.55s
+Recording duration:  61.20s
+Path efficiency:     1.09
 ```
 
-And in the Python terminal:
-```
-Frame received: 1 (14237 bytes)
-Sent tool call: {'id': 1, 'tool': 'move_forward', 'params': {'amount': 1.0}}
-Result: { ... }
-```
-
-**Step 3 — Verify**
-- Capsule moves forward in the Godot viewport
-- `latest_frame.jpg` updates continuously with the camera view
-- `decision_log.jsonl` records each tool call with frame number and position
-- Frame PNGs accumulate in the Godot user data frames folder
-
-**To stop:** Ctrl+C in the Python terminal, F8 in Godot.
-
-**To run again:** Restart Python first, then F5 in Godot.
+The Python server can then be stopped with `Ctrl+C`.
 
 ---
 
-## Output Locations
+## Running the Replay
 
-| Output | Location |
-|--------|----------|
-| Frame PNGs | `C:\Users\faisa\AppData\Roaming\Godot\app_userdata\tilism_poc\frames\` |
-| Decision log | `C:\Users\faisa\AppData\Roaming\Godot\app_userdata\tilism_poc\decision_log.jsonl` |
-| Latest frame | `C:\Projects\Tilism\First\latest_frame.jpg` |
+The replay reads the last recorded `decision_log.jsonl` and 
+reproduces the behavior at variable speed using the ground level 
+camera — no LLM required.
 
----
+1. In the Godot editor, open `replay.tscn`
+2. Press **F6** (Run Current Scene)
+3. Use the **speed slider** in the top-left UI panel to adjust 
+   playback speed from 0.1x to 10x in real time
 
-## Decision Log Format
+At replay completion the UI panel displays:
 
-Each line is one tool call:
-```json
-{"action": "move_forward", "amount": 1.0, "new_position": {"x": 0.0, "y": 0.0, "z": -1.0}, "frame": 11}
+```
+Decisions replayed:   8
+Replay duration:      0.82s
+Original inference:   36.42s
+Original recording:   61.20s
+Speedup:              44.4x
 ```
 
 ---
 
-## What Is NOT Built Yet
+## Output Files
 
-- Local LLM receiving `latest_frame.jpg` and generating tool calls
-- Second puppet with subordinate behavior (proves hierarchical agency)
-- Deterministic reflex layer (puppet fallback when LLM call is slow)
-- Replay system (re-execute decision log deterministically)
+All output files are written to the Godot project directory 
+`tilism_poc/`.
+
+**`decision_log.jsonl`**  
+Overwritten each recording run. Contains one JSON entry per line:
+
+| Entry type | Description |
+|---|---|
+| `run_header` | Seed, puppet start position, goal position |
+| `decision` | dx, dz, inference\_time, position, distance\_to\_goal, frame, timestamp |
+| `goal_reached` | Frame and distance at goal detection |
+| `run_summary` | Total decisions, total inference time, recording duration |
+
+**`runs.csv`**  
+Appended each recording run. One row per run:
+
+| Column | Description |
+|---|---|
+| run\_id | Auto-incrementing integer |
+| timestamp | Unix timestamp at run completion |
+| seed | Random seed used for spawn positions |
+| starting\_distance | Straight-line distance at run start |
+| decision\_count | Total decisions made |
+| inference\_time\_total | Sum of all inference times (seconds) |
+| inference\_time\_mean | Mean inference time per decision |
+| inference\_time\_min | Fastest decision |
+| inference\_time\_max | Slowest decision |
+| recording\_duration | Wall clock from start to goal reached |
+| goal\_reached | true / false |
+| good\_moves | Decisions that decreased distance |
+| bad\_moves | Decisions that increased distance |
+| good\_move\_rate | good\_moves / decision\_count |
+| final\_distance | Distance at run end |
+| path\_efficiency | starting\_distance / total\_distance\_traveled |
+
+**`decisions.csv`**  
+Appended each recording run. One row per decision:
+
+| Column | Description |
+|---|---|
+| run\_id | Foreign key to runs.csv |
+| decision\_number | Position in sequence (1-indexed) |
+| inference\_time | Time for this inference call (seconds) |
+| distance\_before | Distance to goal before this move |
+| distance\_after | Distance to goal after this move |
+| dx | X-axis displacement applied |
+| dz | Z-axis displacement applied |
+| good\_move | true if distance decreased by > 0.05 units |
 
 ---
 
-## Next Step
+## Swapping the Model
 
-Replace the hardcoded tool calls in `mcp_client.py` with a local multimodal
-LLM (LLaVA 7B quantized). The LLM receives `latest_frame.jpg`, reasons about
-what the puppet should do, and returns a `move_forward` tool call. Hardware
-requirement: GTX 1060 6GB is sufficient for a quantized 7B vision model.
+The inference layer is a single function in `mcp_client.py`. 
+To substitute a different model, change two lines:
 
-ollama ps
-ollama list
-ollama run qwen2.5vl:7b "Hello! Are you working?"
+```python
+# Current
+MODEL = "claude-opus-4-5"
+client = anthropic.Anthropic(api_key=API_KEY)
+
+# Example: different Anthropic model
+MODEL = "claude-sonnet-4-5"
+
+# Example: OpenAI
+from openai import OpenAI
+client = OpenAI(api_key=API_KEY)
+# Update the client.messages.create() call accordingly
+```
+
+No changes to the Godot project, communication protocol, 
+decision log format, or replay system are required. The 
+architecture is model-agnostic. Navigation quality is 
+model-dependent — see Section 4.5 of the paper for the 
+model selection rationale.
+
+---
+
+## Empirical Dataset
+
+The repository includes the complete dataset from the paper:
+
+- `tilism_poc/runs.csv` — 26 runs
+- `tilism_poc/decisions.csv` — 222 decisions
+
+Key results:
+
+| Metric | Value |
+|---|---|
+| Runs | 26 |
+| Total decisions | 222 |
+| Goal success rate | 100% |
+| Mean inference time | 4.53s ± 1.12s |
+| Mean good move rate | 92.1% |
+| Mean path efficiency | 1.065 |
+| Max replay speedup | >38× |
+
+---
+
+## Scene Configuration
+
+| Parameter | Value |
+|---|---|
+| Navigable plane | −5.0 to +5.0 (X and Z) |
+| Spawn range | −3.0 to +3.0 (X and Z) |
+| Minimum spawn separation | 4.0 units |
+| Step size | 0.5 units per decision per axis |
+| Goal detection threshold | 0.8 units |
+| LLM camera | Bird's eye at (0, 20, 0) |
+| Replay camera | Ground level at (0, 4, 8) |
+| Viewport capture size | 336 × 336 pixels |
+
+---
+
+## Paper Two
+
+Paper Two will examine orthogonal multi-view observation: 
+simultaneous bird's eye and ground-level cameras to decompose 
+3D spatial reasoning into independent 2D problems. This 
+repository is the foundation on which that work builds.
+
+---
+
+## Citation
+
+If you use this work please cite:
+
+```bibtex
+@article{akhtar2025inference,
+  title={Inference-Subordinate Simulation: Decoupling Agent 
+         Decision Time from Playback Time in 3D Environments},
+  author={Akhtar, Faisal},
+  journal={arXiv preprint},
+  year={2025}
+}
+```
+
+---
+
+## License
+
+MIT License. See `LICENSE` for details.
+
+---
+
+## Contact
+
+Faisal Akhtar  
+[linkedin.com/in/faisalakhtar](https://www.linkedin.com/in/faisalakhtar/)
