@@ -282,7 +282,8 @@ If you use this work please cite:
          Decision Time from Playback Time in 3D Environments},
   author={Akhtar, Faisal},
   journal={arXiv preprint},
-  year={2025}
+  year={2026},
+  url={https://github.com/fakhtar/tilismpoc1}
 }
 ```
 
